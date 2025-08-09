@@ -1,0 +1,86 @@
+REPORT zobj_contador_repositorio.
+
+* Autor: Guni
+* Data de criação: 08/08/2025
+* Objetivo: Contabilizar objetos customizados Z/Y no repositório ABAP,
+*           sumarizar Programas, Includes e Enhancements e exibir o
+*           resultado em ALV para auditoria e controle.
+
+* Tipagem da estrutura que armazenará o resultado por tipo
+TYPES: BEGIN OF ty_result,
+         tipo     TYPE char30, "Tipo do objeto (Programas, Includes, Enhancements)
+         total    TYPE i,      "Quantidade total encontrada
+         ativos   TYPE i,      "Quantidade considerada ativa
+         inativos TYPE i,      "Quantidade considerada inativa
+       END OF ty_result.
+
+* Declaração de variáveis de trabalho
+DATA: lt_result TYPE TABLE OF ty_result, "Tabela com resumo final
+      ls_result TYPE ty_result,          "Estrutura auxiliar para cada linha
+      lv_total  TYPE i.                  "Variável auxiliar para contagem
+
+* Contagem de Programas Z/Y
+* A tabela TRDIR guarda cabeçalhos de programas. SUBC = '1' identifica
+* executáveis. Filtra por nomes que iniciam com Z ou Y, convenção para Z/Y.
+SELECT COUNT(*) INTO lv_total
+  FROM trdir
+ WHERE subc = '1'
+   AND ( name LIKE 'Z%' OR name LIKE 'Y%' ).
+
+CLEAR ls_result.
+ls_result-tipo     = 'Programas Z/Y'.
+ls_result-total    = lv_total.
+ls_result-ativos   = lv_total. "Sem indicador de ativo consistente no ambiente, assume todos ativos
+ls_result-inativos = 0.
+APPEND ls_result TO lt_result.
+
+* Contagem de Includes Z/Y
+* SUBC = 'I' identifica includes, que são dependências reutilizáveis.
+SELECT COUNT(*) INTO lv_total
+  FROM trdir
+ WHERE subc = 'I'
+   AND ( name LIKE 'Z%' OR name LIKE 'Y%' ).
+
+CLEAR ls_result.
+ls_result-tipo     = 'Includes Z/Y'.
+ls_result-total    = lv_total.
+ls_result-ativos   = lv_total.
+ls_result-inativos = 0.
+APPEND ls_result TO lt_result.
+
+* Contagem de Enhancements Z/Y
+* ENHHEADER contem cabeçalhos dos enhancements do Enhancement Framework.
+SELECT COUNT(*) INTO lv_total
+  FROM enhheader
+ WHERE enhname LIKE 'Z%' OR enhname LIKE 'Y%'.
+
+CLEAR ls_result.
+ls_result-tipo     = 'Enhancements Z/Y'.
+ls_result-total    = lv_total.
+ls_result-ativos   = lv_total.
+ls_result-inativos = 0.
+APPEND ls_result TO lt_result.
+
+* Exibição dos resultados em ALV
+* Usa CL_SALV_TABLE para exibir a tabela LT_RESULT de forma tabular.
+DATA: lo_alv TYPE REF TO cl_salv_table,
+      lx_msg TYPE REF TO cx_salv_msg,
+      lv_msg TYPE string.
+
+TRY.
+    cl_salv_table=>factory(
+      IMPORTING
+        r_salv_table = lo_alv
+      CHANGING
+        t_table      = lt_result ).
+
+    lo_alv->display( ).
+
+  CATCH cx_salv_msg INTO lx_msg.
+    IF lx_msg IS NOT INITIAL.
+      lv_msg = lx_msg->get_text( ).
+      MESSAGE lv_msg TYPE 'E'.
+    ELSE.
+      MESSAGE 'Erro desconhecido ao gerar ALV' TYPE 'E'.
+    ENDIF.
+ENDTRY.
